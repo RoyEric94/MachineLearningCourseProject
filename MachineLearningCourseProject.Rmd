@@ -1,0 +1,112 @@
+---
+title: "MachineLearningCourseProject"
+author: "Eric Roy"
+date: "26/03/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading the data
+
+The first step is to load the data from the given sources. The data can be found here :
+
+Training data: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+Final test data:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The dataset contains 5 different classes:
+- Exactly according to the specification (Class A)
+- Throwing the elbows to the front (Class B)
+- Lifting the dumbbell only halfway (Class C)
+- Lowering the dumbbell only halfway (Class D)
+- Throwing the hips to the front (Class E)
+
+```{r LoadData}
+library(caret)
+library(gbm)
+library(e1071)
+
+
+trainUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+trainDestFile <- "pml-training.csv"
+testDestFile <- "pml-testing.csv"
+
+if(!file.exists(trainDestFile))
+{
+    download.file(trainUrl, trainDestFile)
+}
+
+if(!file.exists(testDestFile))
+{
+    download.file(testUrl, testDestFile)
+}
+
+trainData = read.csv("pml-training.csv")
+testData = read.csv("pml-testing.csv")
+```
+
+## Cleanin the data
+
+For this project, any field that contained majoritarily Null (NA) or empty values were excluded from the model. The first 5 columns were also removed. While they contain identifiable information, it's not the kind of information that is useful to predict the type of exercise done. The nearZeroVar function finds fields that have very little variance between it's different values (e.g. the new_window field almost only has "No" and only a few "Yes"). Such fields are not very useful when predicting.
+
+```{r CleanData}
+nearZero <- nearZeroVar(trainData)
+trainData <- trainData[, -nearZero]
+
+trainData <- trainData[ , apply(trainData, 2, function(x) !any(is.na(x)))]
+trainData <- trainData[, -c(1:5)]
+
+
+trainData$classe <- as.factor(trainData$classe)
+set.seed(6646)
+
+inTrain = createDataPartition(trainData$classe, p = 3/4)[[1]]
+
+training = trainData[ inTrain,]
+testing = trainData[-inTrain,]
+```
+
+## Creating the models
+
+In order to properly find the best possible model for this dataset, three different models were tested and compared: A random forest model, a generalized boosted model, and an LDA model. Every model uses 5-fold cross validation, which slows down the model creation, but makes it more accurate.
+
+### Random Forest
+
+```{r RandomForestModel}
+controlRF <- trainControl(method="cv", number=5, verboseIter=FALSE)
+
+modelRF <- train(classe ~ ., data=training, method = "rf", trControl=controlRF)
+predRF <- predict(modelRF, testing)
+confusionMatrix(predRF, testing$classe)
+```
+
+### Boosted Model
+
+```{r BoostedModel}
+modelBoost <- train(classe ~ ., data=training, method = "gbm", verbose=FALSE, trControl=controlRF)
+predBoost <- predict(modelBoost, testing)
+confusionMatrix(predBoost, testing$classe)
+```
+
+### Linear Discriminant Analysis
+
+```{r LDAModel}
+modelLDA <- train(classe ~ ., data=training, method = "lda", verbose=FALSE, trControl=controlRF)
+predLDA <- predict(modelLDA, testing)
+confusionMatrix(predLDA, testing$classe)
+```
+
+## Conclusion
+
+As seen from the results in the previous section, the best model to use in this case is the Random Forest model, that reaches 99.4% accuracy.
+
+
+```{r StackedModel}
+predictTEST <- predict(modelRF, testData)
+predictTEST
